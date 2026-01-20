@@ -324,7 +324,9 @@ python -m unittest test_hr_csv_merge.py
 
 ## 许可证
 
-MIT License
+Apache License 2.0
+
+See [LICENSE](LICENSE) file for details.
 
 ## 贡献
 
