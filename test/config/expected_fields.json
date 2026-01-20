@@ -1,0 +1,166 @@
+{
+  "dragonrun": {
+    "device_name": "龙豆跑步",
+    "field_prefix": "dr_",
+    "display_prefix": "DR_",
+    "expected_field_count": 23,
+    "fields": {
+      "dr_timestamp": {
+        "display_label": "时间戳",
+        "unit": "ms",
+        "category": "basic",
+        "requires_conversion": false
+      },
+      "dr_distance": {
+        "display_label": "距离",
+        "unit": "m",
+        "category": "basic",
+        "requires_conversion": false
+      },
+      "dr_speed": {
+        "display_label": "配速",
+        "unit": "min/km",
+        "storage_unit": "m/s",
+        "display_unit": "min/km",
+        "category": "pace",
+        "requires_conversion": true,
+        "precision": 2
+      },
+      "dr_cadence": {
+        "display_label": "步频",
+        "unit": "spm",
+        "category": "dynamics",
+        "requires_conversion": false
+      },
+      "dr_stride": {
+        "display_label": "步幅",
+        "unit": "cm",
+        "category": "dynamics",
+        "requires_conversion": false
+      },
+      "dr_gct": {
+        "display_label": "触地时间",
+        "unit": "ms",
+        "category": "dynamics",
+        "requires_conversion": false,
+        "aliases": ["dr_stance"]
+      },
+      "dr_air_time": {
+        "display_label": "腾空时间",
+        "unit": "ms",
+        "category": "dynamics",
+        "requires_conversion": false,
+        "aliases": ["dr_air", "dr_at"]
+      },
+      "dr_v_osc": {
+        "display_label": "垂直振幅",
+        "unit": "cm",
+        "category": "dynamics",
+        "requires_conversion": false,
+        "aliases": ["dr_vertical_osc", "dr_vert_osc"]
+      },
+      "dr_vertical_ratio": {
+        "display_label": "垂直步幅比",
+        "unit": "%",
+        "category": "dynamics",
+        "requires_conversion": false
+      },
+      "dr_SSL": {
+        "display_label": "步速损失",
+        "unit": "cm/s",
+        "category": "dynamics",
+        "requires_conversion": false,
+        "aliases": ["dr_ssl"]
+      },
+      "dr_SSL_percent": {
+        "display_label": "步速损失占比",
+        "unit": "%",
+        "category": "dynamics",
+        "requires_conversion": false,
+        "aliases": ["dr_ssl%", "dr_SSL%"]
+      },
+      "dr_vertical_power": {
+        "display_label": "垂直功率",
+        "unit": "W",
+        "category": "power",
+        "requires_conversion": false
+      },
+      "dr_propulsive_power": {
+        "display_label": "前进功率",
+        "unit": "W",
+        "category": "power",
+        "requires_conversion": false,
+        "aliases": ["dr_prop_power"]
+      },
+      "dr_slope_power": {
+        "display_label": "坡度功率",
+        "unit": "W",
+        "category": "power",
+        "requires_conversion": false,
+        "aliases": ["dr_slop_power"]
+      },
+      "dr_total_power": {
+        "display_label": "总功率",
+        "unit": "W",
+        "category": "power",
+        "requires_conversion": false
+      },
+      "dr_LSS": {
+        "display_label": "下肢刚度",
+        "unit": "kN/m",
+        "category": "biomechanics",
+        "requires_conversion": false,
+        "aliases": ["dr_lss"]
+      },
+      "dr_v_ILR": {
+        "display_label": "垂直冲击力",
+        "unit": "bw/s",
+        "category": "impact",
+        "requires_conversion": false,
+        "aliases": ["dr_v_ilr"]
+      },
+      "dr_h_ILR": {
+        "display_label": "水平冲击力",
+        "unit": "bw/s",
+        "category": "impact",
+        "requires_conversion": false,
+        "aliases": ["dr_h_ilr"]
+      },
+      "dr_v_PIF": {
+        "display_label": "垂直冲击峰值",
+        "unit": "g",
+        "category": "impact",
+        "requires_conversion": false,
+        "aliases": ["dr_v_pif"]
+      },
+      "dr_h_PIF": {
+        "display_label": "水平冲击峰值",
+        "unit": "g",
+        "category": "impact",
+        "requires_conversion": false,
+        "aliases": ["dr_h_pif"]
+      },
+      "dr_body_X_PIF": {
+        "display_label": "传感器X轴冲击",
+        "unit": "g",
+        "category": "impact",
+        "requires_conversion": false,
+        "aliases": ["dr_body_x_pif"]
+      },
+      "dr_body_Y_PIF": {
+        "display_label": "传感器Y轴冲击",
+        "unit": "g",
+        "category": "impact",
+        "requires_conversion": false,
+        "aliases": ["dr_body_y_pif"]
+      },
+      "dr_body_Z_PIF": {
+        "display_label": "传感器Z轴冲击",
+        "unit": "g",
+        "category": "impact",
+        "requires_conversion": false,
+        "aliases": ["dr_body_z_pif"]
+      }
+    }
+  }
+}

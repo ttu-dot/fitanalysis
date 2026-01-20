@@ -1,0 +1,102 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+        python-version: ['3.13.4']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/pip
+            ~/Library/Caches/pip
+            ~\AppData\Local\pip\Cache
+          key: ${{ runner.os }}-pip-${{ hashFiles('backend/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Create virtual environment
+        run: python -m venv .venv
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          .\.venv\Scripts\python.exe -m pip install --upgrade pip
+          .\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+          .\.venv\Scripts\python.exe -m pip install pyinstaller
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -r backend/requirements.txt
+          .venv/bin/python -m pip install pyinstaller
+
+      - name: Run pre-build check (Windows)
+        if: runner.os == 'Windows'
+        run: .\.venv\Scripts\python.exe pre_build_check.py
+
+      - name: Run pre-build check (macOS)
+        if: runner.os == 'macOS'
+        run: .venv/bin/python pre_build_check.py
+
+      - name: Build application (Windows)
+        if: runner.os == 'Windows'
+        run: .\.venv\Scripts\python.exe build.py
+
+      - name: Build application (macOS)
+        if: runner.os == 'macOS'
+        run: .venv/bin/python build.py
+
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: fitanalysis-${{ runner.os }}
+          path: dist/fitanalysis-*.zip
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: Display structure
+        run: ls -R artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: FitAnalysis ${{ github.ref_name }}
+          files: artifacts/**/*.zip
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

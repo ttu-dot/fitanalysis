@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FIT Running Data Analyzer</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="stylesheet" href="/css/styles.css">
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- 页头 -->
+        <header class="header">
+            <h1>🏃 FIT跑步数据分析器</h1>
+            <div class="header-actions">
+                <label for="fileInput" class="btn btn-primary" style="cursor: pointer; margin: 0;">📁 上传FIT文件</label>
+                <input type="file" id="fileInput" accept=".fit" style="position: absolute; left: -9999px;">
+            </div>
+        </header>
+
+        <!-- 主导航 -->
+        <nav class="nav-tabs">
+            <button class="tab-btn active" data-view="list">活动列表</button>
+            <button class="tab-btn" data-view="detail" id="detailTab" style="display: none;">活动详情</button>
+            <button class="tab-btn" data-view="compare" id="compareTab" style="display: none;">对比分析</button>
+        </nav>
+
+        <!-- 活动列表页 -->
+        <div id="listView" class="view active">
+            <!-- 筛选和排序 -->
+            <div class="controls">
+                <div class="control-group">
+                    <label>排序:</label>
+                    <select id="sortBy">
+                        <option value="date">日期</option>
+                        <option value="distance">距离</option>
+                        <option value="duration">时长</option>
+                        <option value="avg_pace">配速</option>
+                        <option value="avg_heart_rate">心率</option>
+                    </select>
+                    <select id="sortOrder">
+                        <option value="desc">降序</option>
+                        <option value="asc">升序</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>过滤:</label>
+                    <input type="date" id="filterDateFrom" placeholder="开始日期">
+                    <input type="date" id="filterDateTo" placeholder="结束日期">
+                    <input type="number" id="filterDistMin" placeholder="最小距离(km)" step="0.1">
+                    <input type="number" id="filterDistMax" placeholder="最大距离(km)" step="0.1">
+                    <button id="applyFilter" class="btn btn-secondary">应用</button>
+                    <button id="resetFilter" class="btn btn-secondary">重置</button>
+                </div>
+                <div class="control-group" style="margin-left: auto;">
+                    <button id="resetAllBtn" class="btn btn-danger btn-sm">🗑️ Reset All</button>
+                </div>
+            </div>
+
+            <!-- 活动表格 -->
+            <div class="table-container">
+                <table class="activity-table">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="selectAll"></th>
+                            <th>日期</th>
+                            <th>名称</th>
+                            <th>距离</th>
+                            <th>时长</th>
+                            <th>配速</th>
+                            <th>心率</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="activityTableBody">
+                        <!-- 初始状态为空，由JS控制显示 -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 分页 -->
+            <div class="pagination" id="pagination">
+                <button id="prevPage" class="btn btn-secondary">上一页</button>
+                <span id="pageInfo">第 1 页</span>
+                <button id="nextPage" class="btn btn-secondary">下一页</button>
+            </div>
+
+            <!-- 批量操作 -->
+            <div class="batch-actions">
+                <button id="compareSelected" class="btn btn-primary" style="display: none;">对比选中活动</button>
+                <button id="deleteSelected" class="btn btn-danger" style="display: none;">删除选中活动</button>
+            </div>
+        </div>
+
+        <!-- 活动详情页 -->
+        <div id="detailView" class="view">
+            <div class="detail-header">
+                <button id="backToList" class="btn btn-secondary">← 返回列表</button>
+                <h2 id="activityName">活动详情</h2>
+                <div class="detail-actions">
+                    <label for="hrCsvInput" class="btn btn-secondary" style="cursor: pointer;">➕ 合并心率CSV</label>
+                    <input type="file" id="hrCsvInput" accept=".csv" style="position: absolute; left: -9999px;">
+                    <button id="exportCsvBtn" class="btn btn-secondary">📥 导出CSV</button>
+                    <div class="dropdown" id="exportDropdown" style="display: none;">
+                        <button class="dropdown-item" data-mode="merged" data-type="records">合并CSV (秒级数据)</button>
+                        <button class="dropdown-item" data-mode="merged" data-type="laps">合并CSV (每圈数据)</button>
+                        <button class="dropdown-item" data-mode="categorized">分类CSV (ZIP)</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 汇总信息 -->
+            <div class="summary-cards" id="summaryCards">
+                <!-- 动态生成 -->
+            </div>
+
+            <!-- 标签页 -->
+            <div class="content-tabs">
+                <button class="content-tab-btn active" data-content="trends">趋势图</button>
+                <button class="content-tab-btn" data-content="laps">每圈数据</button>
+            </div>
+
+            <!-- 趋势图内容 -->
+            <div id="trendsContent" class="content-panel active">
+                <!-- 字段选择器容器 (v1.8.0 重构) -->
+                <div class="field-selector-container" data-collapsed="false">
+                    <!-- Toolbar: 搜索 + 控制按钮 + X轴切换 -->
+                    <div class="field-selector-toolbar">
+                        <div class="field-selector-search-wrapper">
+                            <input type="text" 
+                                   id="trendFieldSearch" 
+                                   class="field-selector-search" 
+                                   placeholder="🔍 搜索字段...">
+                        </div>
+                        <div class="field-selector-controls">
+                            <button id="trendsSelectAll" class="btn btn-sm btn-secondary">全选</button>
+                            <button id="trendsDeselectAll" class="btn btn-sm btn-secondary">全不选</button>
+                            <button id="trendsTogglePanel" class="btn btn-sm btn-secondary">▼ 收起面板</button>
+                        </div>
+                        <div class="xaxis-toggle">
+                            <label>X轴:</label>
+                            <button id="xAxisTime" class="btn btn-sm btn-primary">时间</button>
+                            <button id="xAxisDist" class="btn btn-sm btn-secondary">距离</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Body: 字段分组卡片 -->
+                    <div class="field-selector-body">
+                        <div id="fieldCheckboxes" class="field-groups-grid">
+                            <!-- 动态生成卡片 -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 趋势图 -->
+                <div id="trendChart" class="chart-container"></div>
+            </div>
+
+            <!-- 每圈数据内容 -->
+            <div id="lapsContent" class="content-panel">
+                <!-- 单圈字段选择器 (v1.8.0 重构) -->
+                <div class="field-selector-container" data-collapsed="false">
+                    <!-- Toolbar: 搜索 + 控制按钮 -->
+                    <div class="field-selector-toolbar">
+                        <div class="field-selector-search-wrapper">
+                            <input type="text" 
+                                   id="lapFieldSearch" 
+                                   class="field-selector-search" 
+                                   placeholder="🔍 搜索字段...">
+                        </div>
+                        <div class="field-selector-controls">
+                            <button id="lapsSelectAll" class="btn btn-sm btn-secondary">全选</button>
+                            <button id="lapsDeselectAll" class="btn btn-sm btn-secondary">全不选</button>
+                            <button id="lapsTogglePanel" class="btn btn-sm btn-secondary">▼ 收起面板</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Body: 字段分组卡片 -->
+                    <div class="field-selector-body">
+                        <div id="lapFieldCheckboxes" class="field-groups-grid">
+                            <!-- 动态生成卡片 -->
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="table-container">
+                    <table class="laps-table">
+                        <thead id="lapsTableHead">
+                            <!-- 动态生成 -->
+                        </thead>
+                        <tbody id="lapsTableBody">
+                            <!-- 动态生成 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 多活动对比页 -->
+<div id="compareView" class="view">
+            <div class="detail-header">
+                <button id="backToListFromCompare" class="btn btn-secondary">← 返回列表</button>
+                <h2>多活动对比分析</h2>
+            </div>
+
+            <!-- 对比选项 -->
+            <div class="compare-options">
+                <div class="control-group">
+                    <label>对齐方式:</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="alignBy" value="time" checked> 时间</label>
+                        <label><input type="radio" name="alignBy" value="distance"> 距离</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 选中的活动 -->
+            <div class="selected-activities" id="selectedActivitiesList">
+                <!-- 动态生成 -->
+            </div>
+
+            <!-- 字段选择器 -->
+            <div class="field-selector">
+                <div class="field-selector-header">
+                    <h3>选择对比字段（单选）</h3>
+                </div>
+                <div id="compareFieldCheckboxes" class="field-checkbox-grid">
+                    <!-- 动态生成字段单选框 -->
+                </div>
+            </div>
+
+            <!-- 对比图表 -->
+            <div id="compareChart" class="chart-container"></div>
+        </div>
+
+        <!-- 上传进度提示 -->
+        <div id="uploadStatus" class="status-message" style="display: none;">
+            <div class="status-content">
+                <span class="spinner"></span>
+                <span id="uploadStatusText">正在上传...</span>
+            </div>
+        </div>
+        
+        <!-- Version display -->
+        <div id="versionDisplay" class="version-display"></div>
+    </div>
+
+    <script src="/js/charts.js"></script>
+    <script src="/js/app.js"></script>
+    <script src="/js/export.js"></script>
+</body>
+</html>
+
