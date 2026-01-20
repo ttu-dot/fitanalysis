@@ -54,6 +54,8 @@ jobs:
 
       - name: Run pre-build check (Windows)
         if: runner.os == 'Windows'
+        env:
+          PYTHONIOENCODING: utf-8
         run: .\.venv\Scripts\python.exe pre_build_check.py
 
       - name: Run pre-build check (macOS)
@@ -62,6 +64,8 @@ jobs:
 
       - name: Build application (Windows)
         if: runner.os == 'Windows'
+        env:
+          PYTHONIOENCODING: utf-8
         run: .\.venv\Scripts\python.exe build.py
 
       - name: Build application (macOS)
