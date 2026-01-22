@@ -2,7 +2,7 @@
 
 [![Build Release](https://github.com/ttu-dot/fitanalysis/actions/workflows/build-release.yml/badge.svg)](https://github.com/ttu-dot/fitanalysis/actions/workflows/build-release.yml)
 
-A local web application for parsing FIT files from Garmin and other sports devices, providing an activity management experience similar to Garmin Connect.
+A local web application for parsing FIT files from sports devices, providing comprehensive activity analysis and data visualization.
 
 **Supported Platforms**: Windows, macOS
 
@@ -142,7 +142,6 @@ Browser opens automatically at: **http://127.0.0.1:8082**
 
 ```
 fitanalysis/
-├── agent.md                 # 系统设计文档（SDD）
 ├── config.py                # 配置文件
 ├── run.bat                  # Windows启动脚本
 ├── README.md                # 本文件
@@ -173,7 +172,7 @@ fitanalysis/
 
 ### 1. 上传FIT文件
 
-点击 "📁 上传FIT文件" 按钮，选择Garmin手表或其他设备导出的.fit文件。
+点击 "📁 上传FIT文件" 按钮，选择运动手表或其他设备导出的.fit文件。
 
 ### 2. 查看活动列表
 
@@ -275,10 +274,10 @@ Provides complete interactive API documentation (Swagger UI).
 ## FAQ
 
 ### Q: Which FIT files are supported?
-A: All FIT protocol compliant files, including activity files from Garmin, Wahoo, Suunto and other brands.
+A: All FIT protocol compliant files, including activity files from various sports device brands.
 
 ### Q: What are IQ fields?
-A: IQ fields are extended data recorded by Garmin Connect IQ apps (such as DragonRun, Stryd Power Meter, etc.). This application automatically recognizes and displays them, including:
+A: IQ fields are extended data recorded by Connect IQ apps (such as DragonRun, Stryd Power Meter, etc.). This application automatically recognizes and displays them, including:
 - 龙豆跑步 `dr_` 字段：gct(触地时间)、air_time(腾空时间)、v_osc(垂直振幅)、v_pif(冲击峰值)、stride_length(步幅)
 - 标准开发者字段：Connect IQ应用记录的其他扩展数据
 
@@ -305,8 +304,6 @@ A: 支持“离线心率CSV合并到活动”（仅心率CSV，写入为IQ扩展
     - 返回：更新后的 Activity JSON（包含 `merge_provenance`）
 
 ## 开发说明
-
-详细的系统设计文档请查看 [agent.md](./agent.md)。
 
 ### 运行测试
 
