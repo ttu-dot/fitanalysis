@@ -105,8 +105,8 @@ if is_macos:
         info_plist={
             'CFBundleName': 'FIT Running Data Analyzer',
             'CFBundleDisplayName': 'FIT Running Data Analyzer',
-            'CFBundleShortVersionString': '1.8.0',
-            'CFBundleVersion': '1.8.0',
+            'CFBundleShortVersionString': '1.8.1',
+            'CFBundleVersion': '1.8.1',
             'NSHighResolutionCapable': 'True',
         },
     )

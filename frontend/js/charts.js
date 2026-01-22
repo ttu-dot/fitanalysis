@@ -202,11 +202,15 @@ function formatFieldValue(fieldName, value, precision = 2) {
     // 从设备配置中查找字段
     const fieldConfig = window.deviceFieldsMap ? window.deviceFieldsMap.get(fieldName) : null;
     
+    // Pattern-based detection for speed fields (Bug #29 fix)
+    // Matches: speed, avg_speed, max_speed, dr_speed, dr_lap_avg_speed, dr_s_avg_speed, etc.
+    if (fieldName.includes('speed')) {
+        return speed_to_pace(value);
+    }
+    
+    // Device config-based conversion (fallback for non-speed fields)
     if (fieldConfig && fieldConfig.requires_conversion) {
-        // dr_speed需要转换为配速
-        if (fieldName === 'dr_speed' || fieldName.includes('speed')) {
-            return speed_to_pace(value);
-        }
+        // Handle other conversion types if needed in future
     }
     
     // 使用配置中的precision，或使用传入的precision
@@ -1297,10 +1301,17 @@ function renderLapsTable(laps, selectedFields) {
     // 动态生成表头
     const headerCells = selectedFields.map(field => {
         const isIqField = field.startsWith('iq_');
+        const fieldKey = isIqField ? field.replace('iq_', '') : field;
         const label = isIqField ? 
             getFieldLabel(field.replace('iq_', ''), true) :
             (FIELD_LABELS[field] || field);
-        return `<th>${label}</th>`;
+        
+        // Bug #29: Add 🧮 icon for aggregate/calculated fields
+        // Pattern matches: avg_*, max_*, min_*, *_lap_avg_*, *_s_avg_*
+        const isAggregate = /(avg|max|min)_\w+|_lap_avg_|_s_avg_/.test(fieldKey);
+        const icon = isAggregate ? '<span title="FIT-native aggregate value">🧮</span> ' : '';
+        
+        return `<th>${icon}${label}</th>`;
     }).join('');
     
     thead.innerHTML = `<tr>${headerCells}</tr>`;
@@ -1330,18 +1341,17 @@ function renderLapsTable(laps, selectedFields) {
                     formatted = formatDuration(value);
                 } else if (field === 'total_distance') {
                     formatted = (value / 1000).toFixed(2) + ' km';
-                } else if (field === 'avg_speed' || field === 'max_speed' || field === 'iq_dr_speed') {
-                    // v1.8.0: 使用新的速度→配速转换函数
-                    formatted = speed_to_pace(value);
                 } else if (field === 'total_ascent' || field === 'total_descent') {
                     formatted = value.toFixed(0) + 'm';
                 } else if (typeof value === 'number') {
-                    // v1.8.0: 优先使用formatFieldValue处理IQ字段
+                    // Bug #29 fix: 使用formatFieldValue统一处理所有字段（包括速度转换）
                     const fieldKey = field.startsWith('iq_') ? field.replace('iq_', '') : field;
-                    if (field.startsWith('iq_') && window.deviceFieldsMap && window.deviceFieldsMap.has(fieldKey)) {
+                    
+                    // 优先使用formatFieldValue（已包含速度→配速转换逻辑）
+                    if (field.startsWith('iq_') || fieldKey.includes('speed') || fieldKey.includes('avg') || fieldKey.includes('max')) {
                         formatted = formatFieldValue(fieldKey, value);
                     } else {
-                        // 数值类型保留合适精度
+                        // 简单数值字段保留合适精度
                         formatted = value % 1 === 0 ? value.toString() : value.toFixed(2);
                     }
                 } else {

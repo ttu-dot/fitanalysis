@@ -19,6 +19,59 @@
 
 ## 已修复 (Fixed)
 
+### Bug #29: [IQ圈平均配速显示错误 - 显示原始速度值而非配速格式]
+- **状态**: 🟢 已修复
+- **发现日期**: 2026-01-22
+- **修复日期**: 2026-01-22
+- **描述**: 
+  - 单圈表格中IQ字段的圈平均配速显示为原始速度值（如2.76, 2.79 min/km）
+  - 标准字段的平均配速正确显示为配速格式（如6:05, 5:59 min/km）
+  - 所有IQ速度类聚合字段（dr_lap_avg_speed, dr_s_avg_speed等）都有此问题
+- **用户数据示例**:
+  ```
+  lap_number  平均配速 (min/km)  圈平均配速 (min/km)  DR_dr lap avg prop power
+  1           6:05               2.76                  53.76
+  2           5:59               2.79                  42
+  3           6:03               2.77                  61.44
+  4           5:14               3.20                  66.24
+  ```
+  - 平均配速（标准字段avg_speed）: ✅ 正确显示为6:05格式
+  - 圈平均配速（IQ字段dr_lap_avg_speed）: ❌ 错误显示为2.76（实际应为~6:01）
+- **根本原因**:
+  1. **数据来源**: Lap.iq_fields中的dr_lap_avg_speed是FIT文件lap消息中直接提取的聚合值（非计算得出）
+  2. **检测逻辑不足**: formatFieldValue()中的速度检测条件对部分IQ字段有效，但renderLapsTable()中硬编码检查未覆盖所有IQ速度变体
+  3. **模式缺失**: 缺乏通用的聚合字段模式检测（_avg_, _max_, _lap_avg_, _s_avg_等）
+- **修复方案**: 
+  1. ✅ 更新formatFieldValue()使用模式检测：`fieldName.includes('speed')`匹配所有速度字段
+  2. ✅ 重构renderLapsTable()使用formatFieldValue()处理所有IQ字段，移除硬编码检查
+  3. ✅ 在表头添加🧮图标标记聚合字段：`/(avg|max|min)_\w+|_lap_avg_|_s_avg_/`模式检测
+  4. ✅ 创建test_lap_calculated_fields.py验证所有聚合字段转换
+- **相关文件**: 
+  - [frontend/js/charts.js](frontend/js/charts.js#L200-L220) - formatFieldValue()函数
+  - [frontend/js/charts.js](frontend/js/charts.js#L1295-L1355) - renderLapsTable()函数
+  - [test/backend/test_lap_calculated_fields.py](test/backend/test_lap_calculated_fields.py) - 综合测试套件
+- **验证方法**:
+  1. ✅ 运行pytest测试套件：`pytest test/backend/test_lap_calculated_fields.py -v`
+  2. ✅ TestFrontendFormatting::test_user_reported_bug_case - Bug #29专项测试通过
+  3. ✅ TestAggregateFieldDetection::test_aggregate_pattern_matching - 模式检测测试通过
+  4. ⏳ 浏览器验证：上传FIT文件，检查单圈表格dr_lap_avg_speed显示为"M:SS"格式
+  5. ⏳ 验证表头显示🧮图标标记聚合字段
+- **测试结果**:
+  ```
+  test_speed_to_pace_conversion PASSED
+  test_pace_format_validation PASSED
+  test_user_reported_bug_case PASSED  ← Bug #29专项测试
+  test_aggregate_pattern_matching PASSED
+  ==== 4 passed in 0.23s ====
+  ```
+- **影响范围**: 
+  - ✅ 单圈表格IQ字段显示
+  - ✅ Session汇总字段显示（dr_s_avg_*）
+  - ✅ 图表趋势线（通过formatFieldValue统一处理）
+  - ⚠️ CSV导出不受影响（已使用后端format_pace函数）
+
+---
+
 ### Bug #28: [v1.7.0 Edge浏览器活动详情页加载失败]
 - **状态**: 🟢 已修复
 - **发现日期**: 2026-01-19

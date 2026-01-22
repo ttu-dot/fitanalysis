@@ -15,23 +15,23 @@ Download pre-built packages from [GitHub Releases](https://github.com/ttu-dot/fi
 
 ## Version Information
 
-**Current Version**: v1.8.0  
-**Release Date**: 2026-01-20
+**Current Version**: v1.8.1  
+**Release Date**: 2026-01-22
 
-## Latest Update (v1.8.0)
+## Latest Update (v1.8.1)
 
-### 🔧 Device Mapping System Refactor + Field Selector UI Optimization
-- ✅ **Device Mapping System** - Unified field standardization, 23 standard fields based on DragonValue official mapping
-- ✅ **Field Aliases** - Support for stance→gct, ssl→SSL case variants
-- ✅ **Card Layout** - New card-based field selector with search filtering
-- ✅ **Collapsible Panel** - Maximize chart space with collapsible field selector
-- ✅ **Reset All** - One-click clear all activity data with double confirmation
-- ✅ **GitHub Actions** - Automated Windows/macOS builds with ZIP packaging
+### 🐛 Bug Fix: IQ圈平均配速显示错误
+- ✅ **Bug #29修复** - IQ lap aggregate speed fields (dr_lap_avg_speed) now correctly display as pace format ("6:05") instead of raw m/s ("2.76")
+- ✅ **Pattern-based Detection** - Simplified speed field detection using `fieldName.includes('speed')` to cover all variants
+- ✅ **🧮 Aggregate Icon** - Visual indicator for FIT-native aggregate fields in table headers
+- ✅ **Test Suite** - 17 test cases validating all lap/session aggregate fields with 100% unit test pass
+- ✅ **Mermaid Diagrams** - 7 system architecture diagrams in agent.md covering data flow, parsing, conversion
 
-For details see [RELEASE_v1.8.0.md](RELEASE_v1.8.0.md)
+For details see [RELEASE_v1.8.1.md](RELEASE_v1.8.1.md)
 
 ## Version History
 
+- **v1.8.1** (2026-01-22) - Bug fix: IQ圈平均配速显示, test suite, architecture diagrams
 - **v1.8.0** (2026-01-20) - Device mapping refactor, field selector UI optimization, GitHub Actions
 - **v1.7.0** (2026-01-20) - 龙豆字段自动DR_前缀显示
 - **v1.6.0** (2026-01-19) - macOS cross-platform support

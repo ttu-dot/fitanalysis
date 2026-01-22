@@ -21,7 +21,7 @@ ALLOWED_ORIGINS = [
 ]
 
 # 版本信息
-VERSION = "1.8.0"
+VERSION = "1.8.1"
 
 # 文件上传配置
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB

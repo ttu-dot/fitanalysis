@@ -2702,5 +2702,884 @@ precision: int = 2            # 小数位数
 - 2024-12-09: 实现 FR018 多活动日期时间戳功能
 - 2024-12-08: 初始版本，完成 FR001-FR017 所有功能
 
+---
+
+## 14. 系统架构与数据流 (System Architecture & Data Flow)
+
+本节通过Mermaid图表展示系统的完整工作流程，帮助理解数据如何从FIT文件流转到前端显示。
+
+### 14.1 整体系统数据流
+
+```mermaid
+graph TB
+    subgraph "1. 文件上传与解析"
+        A[用户上传FIT文件] --> B[FastAPI接收文件]
+        B --> C{文件类型检查}
+        C -->|单FIT| D[fit_parser.parse_fit_bytes]
+        C -->|FIT+CSV| E[hr_csv_merge.merge_hr_data]
+        E --> D
+    end
+    
+    subgraph "2. FIT解析层 (fit_parser.py)"
+        D --> F[遍历FIT消息]
+        F --> G[parse_record_message<br/>秒级数据]
+        F --> H[parse_lap_message<br/>圈汇总数据]
+        F --> I[parse_session_message<br/>整体汇总]
+        
+        G --> J[extract_developer_fields<br/>IQ扩展字段]
+        H --> J
+        I --> J
+    end
+    
+    subgraph "3. 数据存储层 (data_store.py)"
+        G --> K[Activity.records<br/>List[Record]]
+        H --> L[Activity.laps<br/>List[Lap]]
+        I --> M[Activity.session<br/>Session]
+        J --> N[iq_fields: Dict]
+        
+        K --> O[保存到data/activities/]
+        L --> O
+        M --> O
+        N --> O
+    end
+    
+    subgraph "4. API响应层 (main.py)"
+        O --> P[GET /api/activity/:id]
+        P --> Q[读取JSON文件]
+        Q --> R[返回Activity对象]
+    end
+    
+    subgraph "5. 前端展示层 (frontend/)"
+        R --> S[app.js接收数据]
+        S --> T[renderActivityDetail]
+        T --> U[渲染Session汇总]
+        T --> V[renderLapsTable<br/>单圈表格]
+        T --> W[renderChart<br/>趋势图]
+        
+        V --> X[formatFieldValue<br/>单位转换]
+        W --> X
+        X --> Y[speed_to_pace<br/>配速转换]
+        X --> Z[设备配置查询<br/>deviceFieldsMap]
+    end
+    
+    subgraph "6. 用户交互"
+        U --> AA[Session摘要卡片]
+        V --> AB[动态列表格]
+        W --> AC[Chart.js图表]
+        
+        AB --> AD[字段选择器<br/>勾选显示字段]
+        AC --> AD
+        AD --> AE[localStorage持久化]
+    end
+    
+    style A fill:#e1f5ff
+    style D fill:#fff4e1
+    style O fill:#e8f5e9
+    style R fill:#f3e5f5
+    style X fill:#ffe0b2
+    style AA fill:#e0f2f1
+    style AB fill:#e0f2f1
+    style AC fill:#e0f2f1
+```
+
+**说明**:
+- 🔵 蓝色: 用户入口
+- 🟡 黄色: 解析层
+- 🟢 绿色: 存储层
+- 🟣 紫色: API层
+- 🟠 橙色: 转换层
+- 🟦 青色: 展示层
+
+---
+
+### 14.2 FIT文件解析流水线
+
+```mermaid
+graph LR
+    subgraph "FIT消息类型"
+        A[FIT File Messages] --> B[record消息<br/>时间序列]
+        A --> C[lap消息<br/>圈汇总]
+        A --> D[session消息<br/>整体汇总]
+        A --> E[device_info消息<br/>设备信息]
+    end
+    
+    subgraph "Record解析 (秒级)"
+        B --> F[标准字段<br/>heart_rate, speed, cadence...]
+        B --> G[GPS坐标<br/>position_lat, position_long]
+        B --> H[运动动态<br/>vertical_oscillation...]
+        B --> I[IQ扩展字段<br/>dr_*, 龙豆传感器数据]
+        
+        F --> J[normalize_field_value<br/>单位转换]
+        G --> K[semicircles_to_degrees<br/>GPS转换]
+        H --> J
+        I --> L[DR_FIELD_MAPPING<br/>字段映射]
+    end
+    
+    subgraph "Lap解析 (圈汇总)"
+        C --> M[标准汇总<br/>avg_speed, avg_hr...]
+        C --> N[圈IQ字段<br/>dr_lap_avg_*]
+        
+        M --> O[直接读取FIT值<br/>非计算]
+        N --> P[extract_developer_fields<br/>Lap消息]
+    end
+    
+    subgraph "Session解析 (整体)"
+        D --> Q[Session汇总<br/>total_distance, avg_pace...]
+        D --> R[SessionIQ字段<br/>dr_s_avg_*]
+        
+        Q --> S[直接读取FIT值]
+        R --> T[extract_developer_fields<br/>Session消息]
+    end
+    
+    subgraph "数据模型"
+        J --> U[Record对象<br/>iq_fields: Dict]
+        K --> U
+        L --> U
+        
+        O --> V[Lap对象<br/>iq_fields: Dict]
+        P --> V
+        
+        S --> W[Session对象<br/>iq_fields: Dict]
+        T --> W
+    end
+    
+    style B fill:#e3f2fd
+    style C fill:#fff3e0
+    style D fill:#f1f8e9
+    style I fill:#fce4ec
+    style N fill:#fce4ec
+    style R fill:#fce4ec
+```
+
+**关键点**:
+- Record: 2000-3000条/活动，用于趋势图
+- Lap: 5-10条/活动，用于单圈分析
+- Session: 1条/活动，用于整体摘要
+- IQ字段在所有3个级别都可能存在
+
+---
+
+### 14.3 字段类型分类决策树
+
+```mermaid
+graph TD
+    A[字段名称] --> B{以dr_开头?}
+    B -->|是| C{IQ扩展字段}
+    B -->|否| D{标准字段}
+    
+    C --> E{包含lap_avg_?}
+    C --> F{包含s_avg_?}
+    C --> G{无前缀修饰}
+    
+    E --> H[圈级IQ聚合<br/>dr_lap_avg_speed]
+    F --> I[Session级IQ聚合<br/>dr_s_avg_cadence]
+    G --> J[Record级IQ即时值<br/>dr_speed, dr_gct]
+    
+    D --> K{包含avg_/max_/min_?}
+    K -->|是| L{来源消息类型}
+    K -->|否| M[Record即时测量<br/>speed, heart_rate]
+    
+    L -->|Lap| N[Lap标准聚合<br/>avg_speed, max_hr]
+    L -->|Session| O[Session标准聚合<br/>avg_cadence, total_distance]
+    
+    subgraph "前端展示策略"
+        H --> P[🧮 标记为计算值<br/>使用formatFieldValue]
+        I --> P
+        N --> P
+        O --> P
+        
+        J --> Q[无标记<br/>即时测量值]
+        M --> Q
+    end
+    
+    subgraph "单位转换规则"
+        P --> R{字段名包含speed?}
+        R -->|是| S[speed_to_pace<br/>m/s → min/km]
+        R -->|否| T{查询deviceFieldsMap}
+        
+        T -->|requires_conversion=true| U[应用转换规则]
+        T -->|否| V[使用原始值+精度控制]
+        
+        Q --> W[根据字段类型转换<br/>GPS/垂直振幅/步幅等]
+    end
+    
+    style C fill:#fce4ec
+    style H fill:#ffe0b2
+    style I fill:#ffe0b2
+    style N fill:#ffe0b2
+    style O fill:#ffe0b2
+    style S fill:#c5e1a5
+```
+
+**决策依据**:
+1. **前缀识别**: `dr_` = IQ字段, 无前缀 = 标准字段
+2. **聚合模式**: `_avg_`, `_max_`, `_min_` = 计算值
+3. **级别识别**: `lap_avg_` = Lap级, `s_avg_` = Session级
+4. **转换规则**: 速度类 → 配速，其他查配置表
+
+---
+
+### 14.4 单位转换与格式化流程
+
+```mermaid
+graph TB
+    subgraph "表格渲染入口"
+        A[renderLapsTable] --> B[遍历selectedFields]
+        B --> C{获取字段值}
+        C -->|标准字段| D[lap.avg_speed]
+        C -->|IQ字段| E[lap.iq_fields.dr_lap_avg_speed]
+    end
+    
+    subgraph "格式化决策 (Bug #29修复)"
+        D --> F{特殊格式字段?}
+        E --> F
+        
+        F -->|start_time| G[formatRelativeTime<br/>+MM:SS]
+        F -->|total_elapsed_time| H[formatDuration<br/>HH:MM:SS]
+        F -->|total_distance| I[除以1000<br/>X.XX km]
+        F -->|total_ascent/descent| J[四舍五入<br/>XXX m]
+        F -->|数值类型| K{调用formatFieldValue}
+    end
+    
+    subgraph "formatFieldValue核心逻辑"
+        K --> L{fieldName.includes<br/>'speed'?}
+        L -->|是| M[speed_to_pace<br/>1000/value/60]
+        L -->|否| N{查询deviceFieldsMap}
+        
+        N -->|找到配置| O{requires_conversion?}
+        O -->|true| P[应用自定义转换]
+        O -->|false| Q[应用precision精度]
+        
+        N -->|未找到| Q
+    end
+    
+    subgraph "speed_to_pace实现"
+        M --> R[计算: 1000 / speedMs]
+        R --> S[分离分钟和秒]
+        S --> T[格式化: M:SS]
+        T --> U[返回: '6:05']
+    end
+    
+    subgraph "表格单元格渲染"
+        G --> V[<td>+0:00</td>]
+        H --> V
+        I --> V
+        J --> V
+        M --> V
+        P --> V
+        Q --> V
+        U --> V
+    end
+    
+    subgraph "表头渲染 (聚合标记)"
+        B --> W{字段名匹配<br/>聚合模式?}
+        W -->|/(avg｜max｜min)_/| X[添加🧮图标]
+        W -->|否| Y[仅显示字段标签]
+        
+        X --> Z[<th>🧮 圈平均配速</th>]
+        Y --> Z
+    end
+    
+    style A fill:#e1f5ff
+    style K fill:#fff4e1
+    style M fill:#c5e1a5
+    style U fill:#a5d6a7
+    style X fill:#ffe0b2
+```
+
+**转换优先级**:
+1. 特殊格式字段（时间、距离）→ 直接转换
+2. 速度字段（含speed关键字）→ speed_to_pace()
+3. 设备配置转换 → deviceFieldsMap查询
+4. 默认精度控制 → toFixed(2)
+
+---
+
+### 14.5 设备映射系统工作流
+
+```mermaid
+graph TB
+    subgraph "启动时初始化"
+        A[浏览器加载] --> B[DOMContentLoaded]
+        B --> C[loadDeviceFieldConfigs]
+        C --> D[GET /api/device-mappings]
+        D --> E[DeviceRegistry.get_all_devices_config]
+    end
+    
+    subgraph "后端设备注册表"
+        E --> F[DRAGONRUN_FIELDS<br/>23个字段配置]
+        F --> G[FieldMapping对象<br/>display_label, unit, category...]
+        
+        E --> H[DRAGONRUN_FIELD_ALIASES<br/>25个别名映射]
+        H --> I[dr_stance → dr_gct<br/>dr_vert_osc → dr_v_osc]
+    end
+    
+    subgraph "前端全局Map构建"
+        G --> J[window.deviceFieldsMap<br/>Map<string, FieldConfig>]
+        I --> J
+        
+        J --> K[dr_speed: {<br/>  display_label: '配速'<br/>  unit: 'min/km'<br/>  storage_unit: 'm/s'<br/>  requires_conversion: true<br/>}]
+    end
+    
+    subgraph "字段标签查询"
+        L[getFieldLabel<br/>'dr_gct'] --> M{deviceFieldsMap<br/>.has('dr_gct')?}
+        M -->|找到| N[返回full_label<br/>'DR_触地时间 (ms)']
+        M -->|未找到| O{是Lap字段?<br/>dr_lap_avg_*}
+        
+        O -->|是| P[提取基础字段<br/>dr_lap_avg_speed → dr_speed]
+        P --> Q[查询基础字段配置]
+        Q --> R[生成标签<br/>'圈平均配速 (min/km)']
+        
+        O -->|否| S[回退硬编码<br/>FIELD_LABELS或原始名]
+    end
+    
+    subgraph "数值转换查询"
+        T[formatFieldValue<br/>'dr_speed', 2.5] --> U{deviceFieldsMap<br/>.get('dr_speed')}
+        U --> V{requires_conversion?}
+        V -->|true| W[检查字段类型]
+        W -->|speed类| X[speed_to_pace(2.5)<br/>返回 '6:40']
+        V -->|false| Y[value.toFixed(precision)<br/>返回 '2.50']
+    end
+    
+    subgraph "字段归一化 (后端)"
+        Z[FIT字段: dr_stance] --> AA[DeviceRegistry<br/>.normalize_field_name]
+        AA --> AB[查询DRAGONRUN_FIELD_ALIASES]
+        AB --> AC[返回: dr_gct]
+        AC --> AD[存入Activity.laps[].iq_fields<br/>{'dr_gct': 245}]
+    end
+    
+    style C fill:#e1f5ff
+    style J fill:#fff4e1
+    style N fill:#c5e1a5
+    style X fill:#c5e1a5
+    style AC fill:#f8bbd0
+```
+
+**系统优势**:
+- ✅ 前端零硬编码：所有标签/单位从后端配置
+- ✅ 扩展性强：新增设备只需后端注册
+- ✅ 一致性保证：别名统一归一化
+- ✅ 性能优化：全局Map O(1)查询
+
+---
+
+### 14.6 测试覆盖矩阵
+
+```mermaid
+graph TB
+    subgraph "测试维度划分"
+        A[测试用例] --> B[数据级别维度]
+        A --> C[字段类型维度]
+        A --> D[转换规则维度]
+    end
+    
+    subgraph "数据级别 (3类)"
+        B --> E[Record级<br/>秒级时间序列]
+        B --> F[Lap级<br/>圈汇总统计]
+        B --> G[Session级<br/>整体汇总]
+    end
+    
+    subgraph "字段类型 (4类)"
+        C --> H[标准字段<br/>FIT SDK定义]
+        C --> I[标准聚合<br/>avg_*, max_*, min_*]
+        C --> J[IQ即时值<br/>dr_speed, dr_gct]
+        C --> K[IQ聚合<br/>dr_lap_avg_*, dr_s_avg_*]
+    end
+    
+    subgraph "转换规则 (6类)"
+        D --> L[速度→配速<br/>m/s → min/km]
+        D --> M[步频×2<br/>RPM → SPM]
+        D --> N[垂直振幅÷10<br/>mm → cm]
+        D --> O[步幅÷1000<br/>mm → m]
+        D --> P[GPS坐标<br/>semicircles → degrees]
+        D --> Q[无转换<br/>心率/功率/温度]
+    end
+    
+    subgraph "测试矩阵 (3×4×6 = 72组合)"
+        E --> R[Record × 标准 × 速度→配速<br/>✓ speed field conversion]
+        F --> S[Lap × IQ聚合 × 速度→配速<br/>✓ dr_lap_avg_speed → pace]
+        G --> T[Session × 标准聚合 × 步频×2<br/>✓ avg_cadence RPM→SPM]
+        
+        E --> U[Record × IQ即时 × 垂直振幅<br/>✓ dr_v_osc mm→cm]
+        F --> V[Lap × 标准聚合 × 步幅<br/>✓ avg_step_length mm→m]
+        G --> W[Session × IQ聚合 × GPS<br/>✓ (如果存在)]
+    end
+    
+    subgraph "测试覆盖率要求"
+        R --> X[100% 速度字段必测]
+        S --> X
+        T --> Y[100% 聚合字段必测]
+        V --> Y
+        U --> Z[90% IQ字段抽样]
+        W --> Z
+        
+        X --> AA[测试脚本<br/>test_lap_calculated_fields.py]
+        Y --> AA
+        Z --> AA
+    end
+    
+    subgraph "验证标准"
+        AA --> AB{前端显示格式}
+        AB -->|配速| AC[正则: \\d+:\\d{2}]
+        AB -->|数值| AD[精度检查: ±0.01]
+        AB -->|GPS| AE[范围检查: -180~180]
+        
+        AA --> AF{后端存储单位}
+        AF --> AG[m/s for speed]
+        AF --> AH[RPM for cadence]
+        AF --> AI[mm for vertical_osc]
+    end
+    
+    style X fill:#ffcdd2
+    style Y fill:#ffcdd2
+    style Z fill:#fff9c4
+    style AA fill:#c5e1a5
+```
+
+**测试策略**:
+1. **优先级P0**: 速度→配速转换（用户最敏感）
+2. **优先级P1**: 所有聚合字段（影响统计准确性）
+3. **优先级P2**: IQ字段单位转换（设备兼容性）
+4. **覆盖率目标**: 100% 关键路径，90% 总体
+
+**测试数据来源**:
+- 真实FIT文件：`data/activities/546218476_ACTIVITY.fit`
+- 模拟数据：`test/fixtures/mock_lap_data.json`
+- 边界用例：极值、空值、异常单位
+
+---
+
+### 14.7 CSV导出数据流
+
+```mermaid
+graph LR
+    subgraph "导出入口"
+        A[用户点击导出] --> B{选择模式}
+        B -->|merged| C[单文件模式]
+        B -->|categorized| D[分文件模式]
+    end
+    
+    subgraph "Merged模式"
+        C --> E[csv_exporter.export_merged]
+        E --> F[遍历所有records]
+        F --> G[record_to_dict]
+        G --> H[格式化字段<br/>format_pace, format_timestamp]
+        H --> I[单CSV文件<br/>2000+行]
+    end
+    
+    subgraph "Categorized模式"
+        D --> J[csv_exporter.export_categorized]
+        J --> K[records.csv<br/>秒级数据]
+        J --> L[laps.csv<br/>圈汇总]
+        J --> M[session.csv<br/>整体汇总]
+        
+        K --> N[record_to_dict × N]
+        L --> O[lap_to_dict × N]
+        M --> P[session_to_dict × 1]
+    end
+    
+    subgraph "字段映射"
+        N --> Q[elapsed_time_sec<br/>heart_rate_bpm<br/>speed_mps<br/>iq_dr_speed]
+        O --> R[avg_speed_mps<br/>avg_pace_min_km<br/>iq_dr_lap_avg_speed]
+        P --> S[total_distance_km<br/>avg_cadence_spm<br/>iq_dr_s_avg_cadence]
+    end
+    
+    subgraph "单位转换 (后端)"
+        Q --> T[speed已是m/s<br/>直接写入]
+        R --> U[avg_pace调用<br/>format_pace]
+        U --> V['6:05' 格式字符串]
+        
+        Q --> W[IQ字段<br/>iq_前缀 + 原值]
+        R --> W
+        S --> W
+    end
+    
+    subgraph "压缩打包"
+        I --> X[activity_merged.csv]
+        K --> Y[activity_categorized.zip]
+        L --> Y
+        M --> Y
+        
+        X --> Z[浏览器下载]
+        Y --> Z
+    end
+    
+    style E fill:#e1f5ff
+    style J fill:#fff4e1
+    style U fill:#c5e1a5
+    style W fill:#f8bbd0
+```
+
+**CSV导出特点**:
+- ✅ 后端完成所有单位转换（与前端分离）
+- ✅ IQ字段保持原始值（便于二次分析）
+- ✅ 配速字段同时提供m/s和min/km
+- ✅ 时间戳统一ISO 8601格式
+
+---
+
+### 14.8 测试策略与覆盖率要求
+
+#### 14.8.1 测试分层架构
+
+```mermaid
+graph TB
+    subgraph "测试金字塔"
+        A[单元测试<br/>Unit Tests] --> B[集成测试<br/>Integration Tests]
+        B --> C[端到端测试<br/>E2E Tests]
+    end
+    
+    subgraph "单元测试 (70%)"
+        A --> D[后端单位转换<br/>field_units.py]
+        A --> E[FIT字段解析<br/>fit_parser.py]
+        A --> F[设备映射查询<br/>device_mappings.py]
+        A --> G[前端格式化函数<br/>charts.js模拟]
+    end
+    
+    subgraph "集成测试 (20%)"
+        B --> H[API端点测试<br/>test_api_device_mappings.py]
+        B --> I[计算字段验证<br/>test_lap_calculated_fields.py]
+        B --> J[CSV导出完整性<br/>test_csv_exporter.py]
+    end
+    
+    subgraph "E2E测试 (10%)"
+        C --> K[Playwright浏览器测试<br/>MCP自动化]
+        C --> L[完整用户流程<br/>上传→展示→导出]
+    end
+    
+    subgraph "覆盖率目标"
+        D --> M[100% 关键转换]
+        E --> M
+        I --> M
+        
+        F --> N[90% 配置查询]
+        H --> N
+        
+        G --> O[80% 前端函数]
+        K --> O
+    end
+    
+    style M fill:#c5e1a5
+    style N fill:#fff9c4
+    style O fill:#ffccbc
+```
+
+#### 14.8.2 计算字段测试矩阵
+
+**测试文件**: `test/backend/test_lap_calculated_fields.py`
+
+```mermaid
+graph TB
+    subgraph "测试维度"
+        A[测试用例] --> B[数据级别<br/>Record/Lap/Session]
+        A --> C[字段类型<br/>Standard/IQ]
+        A --> D[转换类型<br/>6种规则]
+    end
+    
+    subgraph "必测组合 (P0优先级)"
+        B --> E[Lap标准聚合]
+        C --> F[IQ Lap聚合]
+        D --> G[速度→配速]
+        
+        E --> H[test_lap_avg_speed_is_valid<br/>✓ 范围: 0.5-10 m/s]
+        E --> I[test_lap_avg_cadence_is_doubled<br/>✓ SPM: 140-220]
+        E --> J[test_lap_avg_vertical_oscillation_unit<br/>✓ cm: 3-20]
+        
+        F --> K[test_iq_lap_avg_speed_value_range<br/>✓ dr_lap_avg_speed: 0.5-10]
+        F --> L[test_iq_fields_naming_pattern<br/>✓ dr_lap_avg_*, dr_s_avg_*]
+        
+        G --> M[test_speed_to_pace_conversion<br/>✓ 2.74→'6:05']
+        G --> N[test_user_reported_bug_case<br/>✓ Bug #29: 2.76→'6:01']
+    end
+    
+    subgraph "边界测试 (P1优先级)"
+        H --> O[极值: 0.5 m/s, 10 m/s]
+        I --> P[边界: 140 SPM, 220 SPM]
+        J --> Q[异常: null, 0, 负数]
+    end
+    
+    subgraph "回归测试 (P2优先级)"
+        K --> R[max >= avg检查<br/>test_lap_max_speed_greater_than_avg]
+        L --> S[字段一致性<br/>test_lap_data_exists]
+        M --> T[格式验证<br/>test_pace_format_validation]
+    end
+    
+    subgraph "覆盖率要求"
+        H --> U[✅ 100% 速度字段]
+        I --> U
+        K --> U
+        M --> U
+        N --> U
+        
+        J --> V[✅ 100% 聚合字段]
+        R --> V
+        
+        O --> W[✅ 90% 边界情况]
+        P --> W
+        Q --> W
+    end
+    
+    style U fill:#c5e1a5
+    style V fill:#c5e1a5
+    style W fill:#fff9c4
+```
+
+**执行标准**:
+- ❗ **100% Pass 强制要求**：任何测试失败禁止提交代码
+- ⏱️ **执行时间**: < 5秒（单元测试应快速反馈）
+- 📊 **覆盖率监控**: pytest-cov生成覆盖率报告
+- 🔄 **CI集成**: 每次PR自动运行测试套件
+
+#### 14.8.3 测试数据管理
+
+```mermaid
+graph LR
+    subgraph "真实数据"
+        A[data/activities/<br/>546218476_ACTIVITY.fit] --> B[完整FIT文件<br/>2410条record, 7个lap]
+        B --> C[用于集成测试<br/>真实场景验证]
+    end
+    
+    subgraph "Mock数据"
+        D[test/fixtures/<br/>mock_lap_data.json] --> E[精简Lap数据<br/>5条典型圈]
+        E --> F[用于单元测试<br/>快速验证]
+    end
+    
+    subgraph "边界数据"
+        G[test/fixtures/<br/>edge_cases.json] --> H[极值测试<br/>null, 0, 极大极小]
+        H --> I[异常处理验证]
+    end
+    
+    subgraph "测试执行"
+        C --> J[pytest fixture<br/>sample_activity]
+        F --> K[pytest fixture<br/>mock_laps]
+        I --> L[pytest parametrize<br/>边界值参数化]
+        
+        J --> M[test_lap_calculated_fields.py]
+        K --> M
+        L --> M
+    end
+    
+    style B fill:#e1f5ff
+    style E fill:#fff4e1
+    style H fill:#ffccbc
+    style M fill:#c5e1a5
+```
+
+**数据维护原则**:
+1. **真实优先**: 优先使用真实FIT文件测试
+2. **Mock补充**: Mock数据覆盖真实数据无法触发的边界情况
+3. **版本控制**: 测试数据纳入Git，确保可复现
+4. **隐私保护**: 真实数据脱敏处理（GPS坐标模糊化）
+
+#### 14.8.4 前端测试策略
+
+**文件**: `frontend/js/charts.test.js`
+
+```mermaid
+graph TB
+    subgraph "前端单元测试"
+        A[charts.test.js] --> B[formatFieldValue测试]
+        A --> C[speed_to_pace测试]
+        A --> D[getFieldLabel测试]
+        A --> E[聚合字段检测测试]
+    end
+    
+    subgraph "模拟环境"
+        B --> F[window.deviceFieldsMap<br/>Mock设备配置]
+        C --> G[JavaScript函数<br/>直接调用]
+        D --> F
+        E --> H[正则模式测试<br/>/(avg｜max｜min)_/]
+    end
+    
+    subgraph "测试用例"
+        F --> I[test_dr_speed_requires_conversion<br/>✓ 查询配置返回true]
+        G --> J[test_speed_to_pace_2_76<br/>✓ Bug #29: 2.76→'6:01']
+        F --> K[test_lap_label_generation<br/>✓ dr_lap_avg_speed→'圈平均配速']
+        H --> L[test_aggregate_pattern_matches<br/>✓ avg_speed匹配, speed不匹配]
+    end
+    
+    subgraph "浏览器执行"
+        I --> M[浏览器控制台<br/>手动运行]
+        J --> M
+        K --> M
+        L --> M
+        
+        M --> N[TestRunner.summary<br/>显示Pass/Fail]
+    end
+    
+    subgraph "自动化验证"
+        I --> O[Playwright MCP<br/>mcp_playwright_browser_run_code]
+        O --> P[注入charts.test.js]
+        P --> Q[执行测试并返回结果]
+        Q --> R[CI流水线验证]
+    end
+    
+    style M fill:#e1f5ff
+    style N fill:#c5e1a5
+    style R fill:#c5e1a5
+```
+
+**前端测试限制**:
+- ⚠️ 无法直接访问DOM（需Playwright环境）
+- ⚠️ deviceFieldsMap依赖后端API（需Mock）
+- ✅ 纯函数易测：speed_to_pace, formatFieldValue
+- ✅ 正则模式可独立测试
+
+#### 14.8.5 Bug #29 专项测试
+
+**回归防护**: 确保IQ Lap聚合字段显示问题不再复现
+
+```mermaid
+graph TB
+    subgraph "Bug复现条件"
+        A[上传含IQ数据的FIT] --> B[查看活动详情]
+        B --> C[勾选iq_dr_lap_avg_speed]
+        C --> D[观察单圈表格]
+    end
+    
+    subgraph "预期行为"
+        D --> E{配速格式?}
+        E -->|✓正确| F["6:01" (M:SS格式)]
+        E -->|✗错误| G["2.76" (原始m/s值)]
+    end
+    
+    subgraph "自动化验证"
+        A --> H[test_user_reported_bug_case]
+        H --> I[输入: 2.76 m/s]
+        I --> J[调用: speed_to_pace]
+        J --> K[断言: 结果匹配/\d+:\d{2}/]
+        K --> L[断言: 结果 != "2.76"]
+    end
+    
+    subgraph "Playwright E2E"
+        A --> M[mcp_playwright上传FIT]
+        M --> N[browser_click选择IQ字段]
+        N --> O[browser_run_code提取表格]
+        O --> P[验证: innerText匹配配速格式]
+    end
+    
+    subgraph "测试数据"
+        Q[真实用户数据] --> R[Lap 1: 2.76 m/s → 6:01]
+        R --> S[Lap 2: 2.79 m/s → 5:58]
+        S --> T[Lap 3: 2.77 m/s → 6:01]
+        
+        Q --> U[预期表格HTML]
+        U --> V[<td>6:01</td>]
+        V --> W[<th>🧮 圈平均配速</th>]
+    end
+    
+    style F fill:#c5e1a5
+    style G fill:#ffcdd2
+    style K fill:#c5e1a5
+    style P fill:#c5e1a5
+```
+
+**回归测试清单**:
+- [x] 后端单位测试: `test_iq_lap_avg_speed_value_range`
+- [x] 前端转换测试: `test_speed_to_pace_conversion`
+- [x] Bug案例测试: `test_user_reported_bug_case`
+- [x] 模式检测测试: `test_aggregate_pattern_matching`
+- [ ] Playwright E2E: 上传→选择→验证表格
+- [ ] 截图对比: 修复前后视觉回归测试
+
+#### 14.8.6 持续集成流水线
+
+```mermaid
+graph LR
+    subgraph "代码提交"
+        A[git push] --> B[GitHub Actions触发]
+    end
+    
+    subgraph "后端测试"
+        B --> C[pytest backend/**]
+        C --> D[test_lap_calculated_fields.py]
+        C --> E[test_device_mappings.py]
+        C --> F[test_api.py]
+        
+        D --> G{100% Pass?}
+        E --> G
+        F --> G
+    end
+    
+    subgraph "前端测试"
+        B --> H[启动开发服务器]
+        H --> I[Playwright连接]
+        I --> J[执行charts.test.js]
+        J --> K{所有测试Pass?}
+    end
+    
+    subgraph "覆盖率检查"
+        G -->|Pass| L[pytest-cov生成报告]
+        L --> M{覆盖率 >= 90%?}
+    end
+    
+    subgraph "部署决策"
+        M -->|Yes| N[构建可执行文件<br/>python build.py]
+        K -->|Pass| N
+        
+        N --> O[打包分发]
+        O --> P[Release v1.X.0]
+    end
+    
+    subgraph "失败处理"
+        G -->|Fail| Q[❌ 阻止合并]
+        K -->|Fail| Q
+        M -->|No| Q
+        
+        Q --> R[通知开发者]
+        R --> S[修复问题]
+        S --> A
+    end
+    
+    style G fill:#fff9c4
+    style K fill:#fff9c4
+    style M fill:#fff9c4
+    style N fill:#c5e1a5
+    style Q fill:#ffcdd2
+```
+
+**CI配置要求**:
+- 🐍 Python 3.8+
+- 📦 依赖: pytest, pytest-cov, fitdecode, pydantic
+- 🌐 浏览器: Chromium for Playwright
+- ⏱️ 超时: 总计< 10分钟
+- 📊 报告: HTML覆盖率报告 + JUnit XML
+
+#### 14.8.7 测试执行命令
+
+```bash
+# 后端单元测试（快速反馈）
+pytest test/backend/test_lap_calculated_fields.py -v
+
+# 所有后端测试
+pytest test/backend/ -v --cov=backend --cov-report=html
+
+# 前端测试（需浏览器环境）
+# 1. 启动开发服务器
+python -m backend.main
+
+# 2. 在浏览器控制台加载并运行
+# 打开 http://localhost:8082
+# 控制台粘贴 frontend/js/charts.test.js 内容
+
+# 集成测试（需真实FIT文件）
+pytest test/integration/ -v
+
+# Playwright E2E测试
+# （通过MCP工具手动触发或CI自动执行）
+```
+
+**本地开发工作流**:
+1. 修改代码 → 运行对应单元测试 → 确保Pass
+2. 提交前 → 运行完整测试套件 → 100% Pass
+3. 推送代码 → CI自动验证 → 通过后合并
+
+**测试失败处理**:
+- 🔍 查看详细错误信息: `pytest -v --tb=long`
+- 🐛 进入调试模式: `pytest --pdb`
+- 📊 检查覆盖率缺失: `pytest --cov-report=term-missing`
+
+---
+
 > 这是一个活文档，随着项目进展会持续更新和完善。
 
