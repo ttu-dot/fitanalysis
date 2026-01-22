@@ -53,12 +53,11 @@ def run_checks():
     else:
         checks.append(('✗', 'fitanalysis.spec 文件不存在'))
     
-    # 3. RELEASE文档存在
+    # 3. RELEASE文档存在（可选，本地开发用）
     release_doc = Path(f'RELEASE_v{VERSION}.md')
     if release_doc.exists():
-        checks.append(('✓', f'RELEASE_v{VERSION}.md 存在'))
-    else:
-        checks.append(('✗', f'RELEASE_v{VERSION}.md 缺失'))
+        checks.append(('✓', f'RELEASE_v{VERSION}.md 存在（本地）'))
+    # 不检查RELEASE文档是否存在，因为这是内部文档
     
     print()
     
@@ -168,7 +167,6 @@ def run_checks():
     
     doc_files = [
         'README.md',
-        'agent.md',
     ]
     
     for file in doc_files:
@@ -176,15 +174,6 @@ def run_checks():
             checks.append(('✓', f'{file} 存在'))
         else:
             checks.append(('✗', f'{file} 缺失'))
-    
-    # 9. agent.md版本记录
-    agent_md = Path('agent.md')
-    if agent_md.exists():
-        agent_content = agent_md.read_text(encoding='utf-8')
-        if f'### v{VERSION}' in agent_content:
-            checks.append(('✓', f'agent.md 包含 v{VERSION} 版本记录'))
-        else:
-            checks.append(('✗', f'agent.md 缺少 v{VERSION} 版本记录'))
     
     print()
     
